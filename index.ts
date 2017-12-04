@@ -137,7 +137,7 @@ const getRawAgent = (auth?: IApiAuth): IRawAgent => ({
         const uri = `${config.version}/${endpoint}?${qs.stringify(queryParams)}`;
 
         // Construct the actual config to be used
-        const agentConfig = { ...publicAgentConfig, url: uri };
+        const agentConfig = { ...publicAgentConfig, url: uri, ...config };
 
         // Send the request.
         const response = await axios(agentConfig);
@@ -185,14 +185,17 @@ const getRawAgent = (auth?: IApiAuth): IRawAgent => ({
         const scrubbedParams = { ...params, ...securityParams };
         const signatureData  = signMessage(uri, scrubbedParams, this.auth.privateKey);
 
+        const headersOverride = config.headers ? config.headers : null;
+
         // Add the appropriate private request headers (apisign)
         const headers = {
             ...privateAgentConfig.headers,
             apisign: signatureData.digest,
+            ...headersOverride,
         };
 
         // Construct the actual config to be used
-        const agentConfig = { ...privateAgentConfig, headers, url: signatureData.fullUrl };
+        const agentConfig = { ...privateAgentConfig, headers, url: signatureData.fullUrl, ...config };
 
         try {
             const response = await axios(agentConfig);
