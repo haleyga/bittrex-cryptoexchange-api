@@ -1,6 +1,6 @@
 {
   "name": "bittrex-api",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Simple typescript interface to the Bittrex cryptoexchange.",
   "main": "index.js",
   "scripts": {
