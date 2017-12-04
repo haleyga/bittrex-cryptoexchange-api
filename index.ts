@@ -12,9 +12,9 @@ const axios = axiosDefault.default;
  * Default configuration.
  */
 const defaultConfig = {
-    rootUrl: `https://api.gemini.com`,
-    timeout: 10000,
-    version: 'v1',
+    rootUrl: `https://bittrex.com/api`,
+    timeout: 3000,
+    version: 'v1.1',
 };
 
 /**
@@ -23,10 +23,9 @@ const defaultConfig = {
 const defaultAgentConfig = {
     baseURL: defaultConfig.rootUrl,
     headers: {
-        'Cache-Control' : 'no-cache',
-        'Content-Length': 0,
-        'Content-Type'  : 'text/plain',
-        'User-Agent'    : `Gemini API Client (gemini-api node package)`,
+        'Cache-Control': 'no-cache',
+        'Content-Type' : 'application/json',
+        'User-Agent'   : `Bittrex API Client (bittrex-api node package)`,
     },
     method : 'GET',
     timeout: defaultConfig.timeout,
@@ -48,41 +47,33 @@ const publicAgentConfig = {
  */
 const privateAgentConfig = {
     ...defaultAgentConfig,
-    method: 'POST',
 };
 
 /**
- * The post body shape.
+ * The query string object shape.
  */
-export interface IPostBody {
-    [key: string]: string | number;
+export interface IQueryParams {
+    [key: string]: string | number | boolean;
 }
 
 /**
- * This function is exported so that a user can experiment with/understand how Gemini wants requests to be signed.
+ * This function is exported so that a user can experiment with/understand how HitBTC wants requests to be signed.
  * Essentially, for user edification ;).
  *
- * @param {string} path
- * @param {{}} postData
+ * @param {string} fullPath
+ * @param {IQueryParams} queryParams
  * @param {string} secret
- * @returns {ISignature}
+ * @returns {string}
  */
-export const signMessage = (path: string, postData: {}, secret: string): ISignature => {
-    const nonce = Date.now().toString();
+export const signMessage = (fullPath: string, queryParams: IQueryParams, secret: string): ISignature => {
+    const uri = `${fullPath}?${qs.stringify(queryParams)}`;
 
-    const body    = { ...postData, nonce, request: path };
-    const payload = new Buffer(JSON.stringify(body)).toString('base64');
-    const digest  = crypto.createHmac('sha384', secret)
-                          .update(payload)
-                          .digest('hex');
+    const digest = crypto.createHmac('sha512', secret)
+                         .update(uri)
+                         .digest('hex');
 
-    return { payload, digest };
+    return { fullUrl: uri, digest };
 };
-
-export interface ISignature {
-    digest: string;
-    payload: string;
-}
 
 /**
  * Convenient container for API keys.
@@ -92,30 +83,35 @@ export interface IApiAuth {
     privateKey: string;
 }
 
+export interface ISignature {
+    digest: string;
+    fullUrl: string;
+}
+
 /**
- * The shape of a Gemini client.
+ * The shape of a Bittrex client.
  */
-export interface IGeminiClient {
+export interface IRawAgent {
     auth?: IApiAuth;
 
     isUpgraded(): boolean;
 
-    getPublicEndpoint(endpoint: string, queryParams?: {}): Promise<IGeminiResponse>;
+    getPublicEndpoint(endpoint: string, queryParams?: {}): Promise<IBittrexResponse>;
 
-    postToPrivateEndpoint(endpoint: string, data?: IPostBody): Promise<IGeminiResponse>;
+    getPrivateEndpoint(endpoint: string, params?: IQueryParams): Promise<IBittrexResponse>;
 
-    signMessage(privateKey: string, path: string, method: string, body?: {}): ISignature;
+    signMessage(fullPath: string, queryParams: IQueryParams, secret: string): ISignature;
 
     upgrade(newAuth: IApiAuth): void;
 }
 
 /**
- * Factory function to get a new GDAX client.
+ * Factory function to get a new Bittrex client.
  *
  * @param {IApiAuth} auth
- * @returns {IGeminiClient}
+ * @returns {IBittrexClient}
  */
-export const getClient = (auth?: IApiAuth): IGeminiClient => ({
+const getRawAgent = (auth?: IApiAuth): IRawAgent => ({
 
     /**
      * This holds the user's API keys.
@@ -128,11 +124,11 @@ export const getClient = (auth?: IApiAuth): IGeminiClient => ({
      * @param {string} endpoint
      * @param {{}} queryParams
      * @param configOverride
-     * @returns {Promise<IGeminiResponse>}
+     * @returns {Promise<IBittrexResponse>}
      */
     async getPublicEndpoint(endpoint: string,
                             queryParams?: {},
-                            configOverride?: IBitfinexRequestConfig): Promise<IGeminiResponse> {
+                            configOverride?: IBittrexRequestConfig): Promise<IBittrexResponse> {
 
         // Construct local config object
         const config = { ...defaultConfig, ...configOverride };
@@ -161,13 +157,13 @@ export const getClient = (auth?: IApiAuth): IGeminiClient => ({
      * Posts to private (authenticated) endpoints.  If no API keys have been provided, this function will fail.
      *
      * @param {string} endpoint
-     * @param {IPostBody} data
+     * @param params
      * @param configOverride
-     * @returns {Promise<IGeminiResponse>}
+     * @returns {Promise<IBittrexResponse>}
      */
-    async postToPrivateEndpoint(endpoint: string,
-                                data?: IPostBody,
-                                configOverride?: IBitfinexRequestConfig): Promise<IGeminiResponse> {
+    async getPrivateEndpoint(endpoint: string,
+                             params?: IQueryParams,
+                             configOverride?: IBittrexRequestConfig): Promise<IBittrexResponse> {
 
         // Ensure the user has credentials
         if (!this.isUpgraded()) return Promise.reject(`api keys are required to access private endpoints`);
@@ -175,21 +171,28 @@ export const getClient = (auth?: IApiAuth): IGeminiClient => ({
         // Construct local config object
         const config = { ...defaultConfig, ...configOverride };
 
-        // The uri is a relative path to the privateAgentConfig,baseUrl
-        const uri = `/${config.version}/${endpoint}`;
+        // The uri is a relative path to the privateAgentConfig baseUrl
+        const uri = `${config.rootUrl}/${config.version}/${endpoint}`;
 
-        const signatureData = signMessage(uri, data, this.auth.privateKey);
+        console.log(uri);
+        //tslint:disable:no-magic-numbers
+        const securityParams = {
+            apiKey: this.auth.publicKey,
+            nonce : Date.now() * 1000,
+        };
+        //tslint:enable:no-magic-numbers
 
-        // Add the appropriate POST request headers (Key and Sign)
+        const scrubbedParams = { ...params, ...securityParams };
+        const signatureData  = signMessage(uri, scrubbedParams, this.auth.privateKey);
+
+        // Add the appropriate private request headers (apisign)
         const headers = {
             ...privateAgentConfig.headers,
-            'X-GEMINI-APIKEY'   : this.auth.publicKey,
-            'X-GEMINI-PAYLOAD'  : signatureData.payload,
-            'X-GEMINI-SIGNATURE': signatureData.digest,
+            apisign: signatureData.digest,
         };
 
         // Construct the actual config to be used
-        const agentConfig = { ...privateAgentConfig, headers, url: uri, data: JSON.stringify(data) };
+        const agentConfig = { ...privateAgentConfig, headers, url: signatureData.fullUrl };
 
         try {
             const response = await axios(agentConfig);
@@ -216,12 +219,149 @@ export const getClient = (auth?: IApiAuth): IGeminiClient => ({
     upgrade(newAuth: IApiAuth): void { this.auth = newAuth; },
 });
 
+//<editor-fold desc="request param types"
+
+export type IGetOrderBookParams = {
+    market: string;
+    type?: string;
+};
+
+export type IPlaceOrderParams = {
+    market: string;
+    quantity: string;
+    rate: string;
+};
+
+export type IWithdrawCryptoParams = {
+    currency: string;
+    quantity: string;
+    address: string;
+    paymentId?: string;
+};
+
+//</editor-fold>
+
+export interface IBittrexClient {
+    rawAgent: IRawAgent;
+
+    isUpgraded(): boolean;
+
+    upgrade(auth: IApiAuth): void;
+}
+
+export const getClient = (auth?: IApiAuth, configOverride: IBittrexRequestConfig = null) => ({
+
+    rawAgent: getRawAgent(auth),
+
+    isUpgraded(): boolean { return this.rawAgent.isUpgraded(); },
+
+    upgrade(newAuth: IApiAuth): void { this.rawAgent.upgrade(newAuth); },
+
+    //<editor-fold desc="public">
+
+    async getMarkets(): Promise<IBittrexResponse> {
+        return this.rawAgent.getPublicEndpoint('public/getmarkets', null, configOverride);
+    },
+
+    async getCurrencies(): Promise<IBittrexResponse> {
+        return this.rawAgent.getPublicEndpoint('public/getcurrencies', null, configOverride);
+    },
+
+    async getTickerTape(marketSymbol: string): Promise<IBittrexResponse> {
+        return this.rawAgent.getPublicEndpoint('public/getticker', { market: marketSymbol }, configOverride);
+    },
+
+    async getMarketSummaries(): Promise<IBittrexResponse> {
+        return this.rawAgent.getPublicEndpoint('public/getmarketsummaries', null, configOverride);
+    },
+
+    async getMarketSummary(marketSymbol: string): Promise<IBittrexResponse> {
+        return this.rawAgent.getPublicEndpoint('public/getmarketsummary', { market: marketSymbol }, configOverride);
+    },
+
+    async getOrderBook(params: IGetOrderBookParams): Promise<IBittrexResponse> {
+        const scrubbedParams = {
+            ...params,
+            type: params.type ? params.type : 'both',
+        };
+
+        return this.rawAgent.getPublicEndpoint('public/getorderbook', scrubbedParams, configOverride);
+    },
+
+    async getMarketHistory(marketSymbol: string): Promise<IBittrexResponse> {
+        return this.rawAgent.getPublicEndpoint('public/getmarkethistory', { market: marketSymbol }, configOverride);
+    },
+
+    //</editor-fold>
+
+    //<editor-fold desc="market">
+
+    // {id: string}
+    async placeLimitBuy(params: IPlaceOrderParams): Promise<IBittrexResponse> {
+        return this.rawAgent.getPrivateEndpoint('market/buylimit', params, configOverride);
+    },
+
+    // {id: string}
+    async placeLimitSell(params: IPlaceOrderParams): Promise<IBittrexResponse> {
+        return this.rawAgent.getPrivateEndpoint('market/selllimit', params, configOverride);
+    },
+
+    async cancelOrder(id: string): Promise<IBittrexResponse> {
+        return this.rawAgent.getPrivateEndpoint('market/cancel', { uuid: id }, configOverride);
+    },
+
+    async getOpenOrders(marketSymbol?: string): Promise<IBittrexResponse> {
+        return this.rawAgent.getPrivateEndpoint('market/getopenorders', { market: marketSymbol }, configOverride);
+    },
+
+    //</editor-fold>
+
+    //<editor-fold desc="accounts">
+
+    async getAccountBalances(): Promise<IBittrexResponse> {
+        return this.rawAgent.getPrivateEndpoint('account/getbalances', null, configOverride);
+    },
+
+    async getBalance(currencyId: string): Promise<IBittrexResponse> {
+        return this.rawAgent.getPrivateEndpoint('account/getbalance', { currency: currencyId }, configOverride);
+    },
+
+    async getDepositAddress(currencyId: string): Promise<IBittrexResponse> {
+        return this.rawAgent.getPrivateEndpoint('account/getdepositaddress', { currency: currencyId }, configOverride);
+    },
+
+    // {id:string}
+    async withdrawCrypto(params: IWithdrawCryptoParams): Promise<IBittrexResponse> {
+        return this.rawAgent.getPrivateEndpoint('account/withdraw', params, configOverride);
+    },
+
+    async getOrder(id: string): Promise<IBittrexResponse> {
+        return this.rawAgent.getPrivateEndpoint('account/getorder', { uuid: id }, configOverride);
+    },
+
+    async getOrderHistory(marketSymbol?: string): Promise<IBittrexResponse> {
+        return this.rawAgent.getPrivateEndpoint('account/getorderhistory', { market: marketSymbol }, configOverride);
+    },
+
+    async getWithdrawalHistory(currencyId?: string): Promise<IBittrexResponse> {
+        return this.rawAgent.getPrivateEndpoint('account/getwithdrawalhistory',
+            { currency: currencyId },
+            configOverride);
+    },
+
+    async getDepositHistory(currencyId?: string): Promise<IBittrexResponse> {
+        return this.rawAgent.getPrivateEndpoint('account/getdeposithistory', { currency: currencyId }, configOverride);
+    },
+
+    //</editor-fold>
+});
+
 /**
  * Alias for Axios request options.
  */
-export interface IBitfinexRequestConfig extends AxiosRequestConfig {}
+export interface IBittrexRequestConfig extends AxiosRequestConfig {}
 
 /**
  * Alias for Axios response.
  */
-export interface IGeminiResponse extends AxiosResponse {}
+export interface IBittrexResponse extends AxiosResponse {}
