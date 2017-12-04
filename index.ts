@@ -247,9 +247,58 @@ export interface IBittrexClient {
     isUpgraded(): boolean;
 
     upgrade(auth: IApiAuth): void;
+
+    getMarkets(): Promise<IBittrexResponse>;
+
+    getCurrencies(): Promise<IBittrexResponse>;
+
+    getTickerTape(marketSymbol: string): Promise<IBittrexResponse>;
+
+    getMarketSummaries(): Promise<IBittrexResponse>;
+
+    getMarketSummary(marketSymbol: string): Promise<IBittrexResponse>;
+
+    getOrderBook(params: IGetOrderBookParams): Promise<IBittrexResponse>;
+
+    getMarketHistory(marketSymbol: string): Promise<IBittrexResponse>;
+
+//</editor-fold>
+
+//<editor-fold desc="market">
+
+// {id: string}
+    placeLimitBuy(params: IPlaceOrderParams): Promise<IBittrexResponse>;
+
+// {id: string}
+    placeLimitSell(params: IPlaceOrderParams): Promise<IBittrexResponse> ;
+
+    cancelOrder(id: string): Promise<IBittrexResponse>;
+
+    getOpenOrders(marketSymbol?: string): Promise<IBittrexResponse>;
+
+//</editor-fold>
+
+//<editor-fold desc="accounts">
+
+    getAccountBalances(): Promise<IBittrexResponse>;
+
+    getBalance(currencyId: string): Promise<IBittrexResponse> ;
+
+    getDepositAddress(currencyId: string): Promise<IBittrexResponse>;
+
+// {id:string}
+    withdrawCrypto(params: IWithdrawCryptoParams): Promise<IBittrexResponse>;
+
+    getOrder(id: string): Promise<IBittrexResponse> ;
+
+    getOrderHistory(marketSymbol?: string): Promise<IBittrexResponse>;
+
+    getWithdrawalHistory(currencyId?: string): Promise<IBittrexResponse>;
+
+    getDepositHistory(currencyId?: string): Promise<IBittrexResponse>;
 }
 
-export const getClient = (auth?: IApiAuth, configOverride: IBittrexRequestConfig = null) => ({
+export const getClient = (auth?: IApiAuth, configOverride: IBittrexRequestConfig = null): IBittrexClient => ({
 
     rawAgent: getRawAgent(auth),
 
