@@ -174,7 +174,6 @@ const getRawAgent = (auth?: IApiAuth): IRawAgent => ({
         // The uri is a relative path to the privateAgentConfig baseUrl
         const uri = `${config.rootUrl}/${config.version}/${endpoint}`;
 
-        console.log(uri);
         //tslint:disable:no-magic-numbers
         const securityParams = {
             apiKey: this.auth.publicKey,
