@@ -25,7 +25,7 @@ const defaultAgentConfig = {
     headers: {
         'Cache-Control': 'no-cache',
         'Content-Type' : 'application/json',
-        'User-Agent'   : `Bittrex API Client (bittrex-api node package)`,
+        'User-Agent'   : `Bittrex API Client (bittrex-cryptoexchange-api node package)`,
     },
     method : 'GET',
     timeout: defaultConfig.timeout,
