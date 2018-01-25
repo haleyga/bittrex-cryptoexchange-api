@@ -29,6 +29,7 @@ const defaultAgentConfig = {
     },
     method : 'GET',
     timeout: defaultConfig.timeout,
+    validateStatus: () => true,
 };
 
 /**
